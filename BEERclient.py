@@ -7,12 +7,14 @@ class Client:
         
         self.name= input("enter ur name: ")
         self.ID= input("enter ur ID: ")
+        self.session_id= input("enter session ID if rejoining: ")
         self.role= input("Enter your role (p = Player, s = Spectator): ").lower().strip()
         
         self.client={
                 'client_name': self.name,
                 'client_ID': self.ID,
                 'client_role': self.role
+                'session_id:' self.session_id
                 }
         
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

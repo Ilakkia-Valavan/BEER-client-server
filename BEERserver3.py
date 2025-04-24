@@ -1,6 +1,7 @@
 import ast
 import socket
 import threading
+from battleship import Board, parse_coordinate
 
 class Server:
     Clients = []
@@ -104,84 +105,92 @@ class Server:
 
             
 
+    def send_fire_result(sock, session_id, result, sunk, ship_name):
+    message = {
+        "header": {
+            "response_status": "success",
+            "session_id": session_id
+        },
+        "error": {},
+        "Response": {
+            "result": result,
+            "sunk": "yes" if sunk else "no",
+            "ship_name": ship_name if ship_name else "none"
+        }
+    }
+    try:
+        sock.send(json.dumps(message).encode())
+    except Exception as e:
+        print(f"[ERROR] Failed to send fire result: {e}")
+
     def handle_game(self, player1, player2):
         print(f"Match started between {player1['client_name']} and {player2['client_name']}")
 
-        try:
-            # Initial match intro
-            player1['client_socket'].send("Match started! You are Player 1.\n".encode())
-            player2['client_socket'].send("Match started! You are Player 2.\n".encode())
+        board1 = Board()
+        board2 = Board()
+        board1.place_ships_randomly()
+        board2.place_ships_randomly()
 
-            for player in [player1, player2]:
-                player['client_socket'].send("Phase 1: Place your ships. Use format: PLACE <ShipName> <Coord> <H/V>\n".encode())
+        player1['client_socket'].send("Game starting... You are Player 1.\n".encode())
+        player2['client_socket'].send("Game starting... You are Player 2.\n".encode())
 
-            # Simulate ship placement input
-            for player in [player1, player2]:
-                ship_count = 0
-                while ship_count < len(SHIPS):
-                    try:
-                        msg = player['client_socket'].recv(1024).decode().strip()
-                        player['client_socket'].send(f"placed: {msg}\n".encode())
-                        ship_count += 1
-                    except:
-                        player['client_socket'].send("Invalid input or connection issue.\n".encode())
-                        break
+        players = [(player1, board1, board2), (player2, board2, board1)]
+        turn = 0
+        game_over = False
 
-            # Game logic loop
-            player1['client_socket'].send("Game starting. Your turn. FIRE <Coord>\n".encode())
-            player2['client_socket'].send("Wait for your turn...\n".encode())
+        while not game_over:
+            attacker, attacker_board, defender_board = players[turn]
+            defender = players[1 - turn][0]
 
-            game_over = False
-            current_turn = 0
-            players = [player1, player2]
+            try:
+                attacker['client_socket'].send("Your turn. FIRE <Coord> (e.g. A5):\n".encode())
+                defender['client_socket'].send("Waiting for opponent's move...\n".encode())
 
-            while not game_over:
-                attacker = players[current_turn]
-                defender = players[1 - current_turn]
-
-                attacker['client_socket'].send("Your turn: FIRE <Coord>\n".encode())
                 coord = attacker['client_socket'].recv(1024).decode().strip()
+                row, col = parse_coordinate(coord)
 
-                result_msg = f"{attacker['client_name']} fired at {coord}\n"
-                attacker['client_socket'].send(f"Result: {result_msg}".encode())
-                defender['client_socket'].send(f"{attacker['client_name']} fired at {coord}\n".encode())
+                result, sunk_ship = defender_board.fire_at(row, col)
+                send_fire_result(attacker['client_socket'], attacker['session_id'], result, bool(sunk_ship), sunk_ship)
+                send_fire_result(defender['client_socket'], defender['session_id'], result, bool(sunk_ship), sunk_ship)
 
-                if coord.lower() == 'z10':  # dummy end condition
+                if defender_board.all_ships_sunk():
+                    attacker['client_socket'].send("You win!\n".encode())
+                    defender['client_socket'].send("You lose!\n".encode())
                     game_over = True
                     break
 
-                current_turn = 1 - current_turn
+                turn = 1 - turn
+            except Exception as e:
+                print(f"Error in game loop: {e}")
+                break
 
-            # Ask if they want to play again
-            responses = {}
-            for player in [player1, player2]:
-                try:
-                    player['client_socket'].send("Game over! Do you want to play another match? (yes/no)\n".encode())
-                    reply = player['client_socket'].recv(1024).decode().strip().lower()
-                    responses[player['client_name']] = reply
-                except:
-                    responses[player['client_name']] = 'no'
+        # Ask both players if they want to continue
+        responses = {}
+        for player in [player1, player2]:
+            try:
+                player['client_socket'].send("Game over. Do you want to play again? (yes/no)\n".encode())
+                reply = player['client_socket'].recv(1024).decode().strip().lower()
+                responses[player['client_name']] = reply
+            except:
+                responses[player['client_name']] = 'no'
 
-            # Re-add to lobby based on responses
-            if responses.get(player1['client_name'], 'no') == 'yes':
-                self.lobby.append(player1)
-                player1['client_socket'].send("You've been re-added to the lobby.\n".encode())
-            else:
-                player1['client_socket'].send("Thanks for playing! Disconnecting...\n".encode())
-                player1['client_socket'].close()
+        # Re-add to lobby if they want to continue
+        if responses.get(player1['client_name'], 'no') == 'yes':
+            self.lobby.append(player1)
+            player1['client_socket'].send("You've been re-added to the lobby.\n".encode())
+        else:
+            player1['client_socket'].send("Thanks for playing! Disconnecting...\n".encode())
+            player1['client_socket'].close()
 
-            if responses.get(player2['client_name'], 'no') == 'yes':
-                self.lobby.append(player2)
-                player2['client_socket'].send("You've been re-added to the lobby.\n".encode())
-            else:
-                player2['client_socket'].send("Thanks for playing! Disconnecting...\n".encode())
-                player2['client_socket'].close()
+        if responses.get(player2['client_name'], 'no') == 'yes':
+            self.lobby.append(player2)
+            player2['client_socket'].send("You've been re-added to the lobby.\n".encode())
+        else:
+            player2['client_socket'].send("Thanks for playing! Disconnecting...\n".encode())
+            player2['client_socket'].close()
 
-        except Exception as e:
-            print("Error during match:", str(e))
+        self.game_in_progress = False
 
-        finally:
-            self.game_in_progress = False
 
 
 
