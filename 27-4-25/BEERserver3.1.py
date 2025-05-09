@@ -71,64 +71,9 @@ class Server:
                     else: 
                         if self.player_rejoin(client_detail) :
                             break
-                elif role == "S":
-                    self.spectator_handler(client_detail)
 
             except Exception as e:
                 print(e)
-
-    def spectator_handler(self, client_detail):
-        self.spectators.append(client_detail)
-        client_detail["client_socket"].sendall(str(Util.get_info_message("Succesfully registered as Spectator")).encode())
-        time.sleep(2)
-        threading.Thread(target=self.manage_spectator, args=(client_detail,)).start()
-
-    def manage_spectator(self, spectator):  
-        while True:
-            try:
-                if not self.game_in_progress:
-                    spectator["client_socket"].sendall(
-                        str(Util.get_info_message("No game in progress currently. You can send chat with other spectators until new game starts")).encode()
-                    )
-                    self.chat_handler_spectator(spectator)
-                    
-                else:
-                    if self.player1 and self.player2:
-                        player1_grid = self.player1["handler"].get_hidden_grid()
-                        player2_grid = self.player2["handler"].get_hidden_grid()
-
-                        spectator["client_socket"].sendall(
-                            str(Util.get_grid_message_spectators(
-                                f"{self.player1['client_name']}'s board status", player1_grid,
-                                f"{self.player2['client_name']}'s board status", player2_grid
-                            )).encode()
-                        )
-                    
-
-            except Exception as e:
-                print(f"[ERROR] {e}.")
-
-            time.sleep(30)
-
-    #little confusion need to work on chating
-    def chat_handler_spectator(self, spectator):
-        try:
-            spectator_socket = spectator["client_socket"]
-            spectator_name = spectator["client_name"]
-
-            message = spectator_socket.recv(1024).decode().strip()
-
-            if message:
-                # Broadcast to all other spectators
-                for other in self.spectators:
-                    try:
-                        other["client_socket"].sendall(
-                            str(self.message_util.send_chat_message(message)).encode()
-                        )
-                    except:
-                        continue  
-        except Exception as e:
-            print(f"[CHAT ERROR] {e}")
 
 
 
@@ -215,6 +160,38 @@ class Server:
                 self.player_registration(client_detail)
             #tp-do else
             break
+
+    def spectator_handler(self, client_detail):
+        self.spectators.append(client_detail)
+
+    def manage_spectator(self):
+        for spectator in self.lobby: 
+            message = self.get_info_message("Succesfully registered as Spectator")
+            
+            try:
+                spectator["client_socket"].sendall(str(message).encode())
+
+                if self.game_in_progress:
+
+                    if self.player1 != None and self.player2 != None:
+                        player1_grid = self.player1["handler"].get_hidden_grid()
+                        player2_grid = self.player2["handler"].get_hidden_grid()
+
+                        spectator["client_socket"].sendall(str(Util.get_grid_message_spectators(f"{self.player1["client_name"]}'s board status", player1_grid , f"{self.player2["client_name"]}'s board status", player2_grid)).encode())
+
+                else:
+                    message = self.get_info_message("No game in progress currently.")
+
+            except:
+                print(f"Failed to notify {spectator['client_name']}.")
+
+    def message_handler_spectator():
+        """
+        broadcasts messages sent by any spectator to every other spectator connected with server.
+        [name] : message
+
+        """
+        pass
 
 
     def player_rejoin(self, client_detail):

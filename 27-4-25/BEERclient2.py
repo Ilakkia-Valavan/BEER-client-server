@@ -34,57 +34,34 @@ class Client:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect((HOST, PORT))
         print(f"[CONNECTED] Connected to server at {HOST}:{PORT}")
-
-        self.name = input("Enter your name: ")
-        if self.name == "":
-            self.name = input("Please enter valid  name: ")
-
-        self.ID = input("Enter your ID: ")
-        if self.ID == "":
-            self.ID = input("Please enter ID : ")
-
-        self.role = input("Enter your role (p = Player, s = Spectator): ").lower().strip()
-
-        if self.role.lower() != "p" and self.role.lower() != "s":
-            self.role = input("Enter valid role (p = Player, s = Spectator): ").lower().strip()
-
-        if self.role.lower() == 'p' :
-            self.player_registration()
         
-        elif self.role.lower() == "s":
-            self.spectator_register()
+        #if self.role == 'p' :
 
-    def spectator_register(self, response_message = None):
-        self.client = {
-                'client_name': self.name,
-                'client_ID': self.ID,
-                'client_role': self.role,
-            }
-        self.message_util = ClientMessageUtil()
-        message = self.message_util.get_spectator_registration_message(self.client)
-        self.socket.sendall(str(message).encode())
-        threading.Thread(target=self.receive_and_interact_with_server).start()
-        self.start_chat_loop()
+        self.player_registration()
 
-    def start_chat_loop(self):
-        def chat_loop():
-            while True:
-                try:
-                    msg = input("")  # Accept chat message
-                    if msg.strip():
-                        self.socket.sendall(msg.encode())
-                except:
-                    break
-        threading.Thread(target=chat_loop, daemon=True).start()
-
-
+        #else:
+            #self.watch_game()
 
     def player_registration(self, response_message = None):
         print("in player_registration 1")
         if response_message == None : 
+            
+            self.name = input("Enter your name: ")
+            if self.name == "":
+                self.name = input("Please enter valid  name: ")
+
+            self.ID = input("Enter your ID: ")
+            if self.ID == "":
+                self.ID = input("Please enter ID : ")
+
+            self.role = input("Enter your role (p = Player, s = Spectator): ").lower().strip()
+
+            if self.role.lower() != "p" and self.role.lower() != "s":
+                self.role = input("Enter valid role (p = Player, s = Spectator): ").lower().strip()
                
             if self.role.lower() == "p":
                 self.session_id = input("Enter session ID if rejoining (or leave blank): ").strip()
+
 
             self.message_util = ClientMessageUtil()
 
@@ -208,9 +185,6 @@ class Client:
 
                     elif server_message["message_type"] == "ACTION":
                         self.action_handler(server_message)
-
-                    elif server_message["message_type"] == "CHAT":
-                        self.get_chat_message(server_message["message"])
 
                     print("in thread func 2")
 

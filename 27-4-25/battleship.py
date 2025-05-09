@@ -11,6 +11,7 @@ Contains core data structures and logic for Battleship, including:
 import random
 
 BOARD_SIZE = 10
+"""
 SHIPS = [
     ("Carrier", 5),
     ("Battleship", 4),
@@ -18,7 +19,12 @@ SHIPS = [
     ("Submarine", 3),
     ("Destroyer", 2)
 ]
+"""
 
+SHIPS = [
+    ("Submarine", 3),
+    ("Destroyer", 2)
+]
 
 class Board:
     """
@@ -39,13 +45,25 @@ class Board:
         opponent_board.fire_at(...) and sends back the result.
     """
 
-    def __init__(self, size=BOARD_SIZE):
+    def __init__(self, player_name = "test" ,size=BOARD_SIZE):
+        self.player_name = player_name
+
         self.size = size
         # '.' for empty water
         self.hidden_grid = [['.' for _ in range(size)] for _ in range(size)]
         # display_grid is what the player or an observer sees (no 'S')
         self.display_grid = [['.' for _ in range(size)] for _ in range(size)]
         self.placed_ships = []  # e.g. [{'name': 'Destroyer', 'positions': {(r, c), ...}}, ...]
+
+    def get_player_name(self):
+        return self.player_name
+
+    def get_display_grid(self):
+        return self.display_grid
+
+    def get_hidden_grid(self):
+        return self.hidden_grid
+        
 
     def place_ships_randomly(self, ships=SHIPS):
         """
@@ -116,6 +134,7 @@ class Board:
         with the given orientation (0 => horizontal, 1 => vertical).
         Returns True if the space is free, False otherwise.
         """
+
         if orientation == 0:  # Horizontal
             if col + ship_size > self.size:
                 return False
