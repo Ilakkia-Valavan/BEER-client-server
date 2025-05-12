@@ -6,6 +6,8 @@ import ast
 from ClientMessageUtil import ClientMessageUtil 
 from Utility import Util 
 import logging
+import time
+import msvcrt
 
 class Client:
     #logging.basicConfig(level=logging.DEBUG)
@@ -54,6 +56,23 @@ class Client:
         elif self.role.lower() == "s":
             self.spectator_register()
 
+    def get_user_input(self, prompt_message):
+        timeout = 30  # seconds
+        print(prompt_message)
+        start_time = time.time()
+        char = None
+        while True:
+            if msvcrt.kbhit():
+                char = sys.stdin.readline()
+                print("You entered:", char.strip())
+                break
+            if time.time() - start_time > timeout:
+                print("Timeout: no input received.")
+                break
+            time.sleep(0.1)
+
+        return char
+
     def spectator_register(self, response_message = None):
         self.client = {
                 'client_name': self.name,
@@ -63,19 +82,59 @@ class Client:
         self.message_util = ClientMessageUtil()
         message = self.message_util.get_spectator_registration_message(self.client)
         self.socket.sendall(str(message).encode())
-        threading.Thread(target=self.receive_and_interact_with_server).start()
+        threading.Thread(target=self.receive_and_interact_with_server_spectator).start()
         self.start_chat_loop()
+
+    def receive_and_interact_with_server_spectator(self):
+        while True:
+            print("in while loop")
+            try:           
+                message = self.socket.recv(4096).decode()
+                #print("receive_and_interact_with_server-> " ,message)
+
+                # Try to parse as dict (structured message)
+                try:
+                    
+                    server_message = ast.literal_eval(message)
+                    if server_message["message_type"] == "CHAT":
+                        print("chat list client side :" ,server_message)
+                        chat_list = server_message["chat_list"]
+                        for i in chat_list:
+                            chat_entry = ast.literal_eval(i)
+                            Util.print_chat_message(chat_entry["message"], chat_entry["sender"])
+
+                    elif server_message["message_type"] == "INFO":
+                        Util.print_info(server_message["message"])
+                        if "display_grid" in server_message and server_message["display_grid"] != None:
+                            #print("grid part : ",server_message)
+                            self.print_display_grid(server_message["display_grid"])
+
+                        if "player1_grid" in server_message:
+                            Util.print_info(server_message["player1_message"])
+                            self.print_display_grid(server_message["player1_grid"])
+
+                            Util.print_info(server_message["player2_message"])
+                            self.print_display_grid(server_message["player2_grid"])
+
+
+                except Exception as e:
+                    print(f"[CHAT ERROR] {e}")
+
+            except Exception as e:
+                    print(f"[CHAT ERROR] {e}")
+                    break
 
     def start_chat_loop(self):
         def chat_loop():
             while True:
                 try:
-                    msg = input("")  # Accept chat message
+                    prompt_message = Util.get_prompt_message("Enter CHAT message: ")
+                    msg = input()  # Accept chat message
                     if msg.strip():
-                        self.socket.sendall(msg.encode())
+                        self.socket.sendall(str(self.message_util.get_chat_messages(msg,self.client)).encode())
                 except:
                     break
-        threading.Thread(target=chat_loop, daemon=True).start()
+        threading.Thread(target=chat_loop).start()
 
 
 
@@ -133,14 +192,17 @@ class Client:
             message = Util.get_prompt_message(f"Input direction(Horizontal/Vertical) to place the ship <H/V> ")
             direction = input(message)
 
-            message = self.message_util.get_ship_placement_message(ship_detail, position, direction, self.client)
+            message = self.message_util.get_ship_placement_message(ship_detail, position, direction.upper(), self.client)
 
             print("place ship: ", message)
             self.socket.sendall(str(message).encode())
 
         elif server_message["command"] == "FIRE":
-            message = Util.get_prompt_message(server_message["message"])
-            position = input(message)
+            message = Util.get_prompt_message(server_message["message"] + " (within 30 seconds.)")
+            #inputs, outputs, errors = select.select([sys.stdin], [], [], 20)
+            #print("action handler input timeout 1: inputs: ", inputs,"outputs: " , outputs,"errors: ",errors)
+            #position = input(message)
+            position = self.get_user_input(message)
             message = self.message_util.get_fire_command(self.client, position)
             self.socket.sendall(str(message).encode())
 
@@ -208,9 +270,6 @@ class Client:
 
                     elif server_message["message_type"] == "ACTION":
                         self.action_handler(server_message)
-
-                    elif server_message["message_type"] == "CHAT":
-                        self.get_chat_message(server_message["message"])
 
                     print("in thread func 2")
 

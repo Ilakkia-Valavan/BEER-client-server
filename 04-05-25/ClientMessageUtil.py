@@ -30,3 +30,8 @@ class ClientMessageUtil:
         message = {"message_type": "ACTION", "command": "CONTINUE" , "data":{ "answer" : answer, "session_id" : client_detail["session_id"]}}
 
         return message
+
+    def get_chat_messages(self,message, client_detail):
+        message = {"message_type": "CHAT", "command": "" , "data":{ "message" : message, "name" : client_detail["client_name"]}}
+
+        return message

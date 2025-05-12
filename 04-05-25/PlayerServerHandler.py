@@ -57,6 +57,7 @@ class PlayerServerHandler:
 
                 try:
                     row, col = parse_coordinate(client_message["data"]["position"])
+                    #col = col.upper()
                     if client_message["data"]["direction"] == 'H':
                         orientation = 0
 
@@ -87,15 +88,20 @@ class PlayerServerHandler:
                 
 
             except Exception as e:
-                print(e)
+                print("place ship main error",e)
 
     def fire_at(self, message):
         position = message["data"]["position"]
+
+        if position == None or position == "":
+            return None, None , self.board.get_display_grid() , "Timed out or Input not received."
+        
         name = self.board.get_player_name()
         print("executing fire command for: ", name)
         sunk_name = None
         try:
             row, col = parse_coordinate(position)
+            #col = col.upper()
             result, sunk_name = self.board.fire_at(row, col)
 
             if result == 'hit':
@@ -113,7 +119,6 @@ class PlayerServerHandler:
             elif result == 'already_shot':
                 return_message =  "  >> You've already fired at that location. Try again. \n Opponent board status: "
             
-
         except ValueError as e:
             print("  >> Invalid input:", e)
             return_message = "Invalid coordinates. Try again. \n Opponent board status: "

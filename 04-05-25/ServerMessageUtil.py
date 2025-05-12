@@ -57,9 +57,17 @@ class ServerMessageUtil:
         message = {"message_type" : "ACTION", "message": "\nDo you want to continue playing?(y/n): ", "command" : "CONTINUE"}
         return message
 
-    def send_chat_message(self, message):
-        message = {"message_type" : "CHAT", "message": message, "command" : ""}
+    def send_chat_message(self, message, spectator_name):
+        message = {"message_type" : "CHAT", "message": message, "sender" : spectator_name, "command" : ""}
         return message
 
+    def send_chat_list(self, chat_list):
+        message = {"message_type" : "CHAT", "chat_list": chat_list}
+        return message
+
+    def get_fire_command_for_server_timeout(self,client_detail, position):
+        message = {"message_type": "ACTION", "command": "FIRE" , "data":{ "position" : position, "session_id" : client_detail["session_id"]}}
+
+        return message
     
 

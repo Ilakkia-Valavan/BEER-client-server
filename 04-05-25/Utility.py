@@ -31,8 +31,8 @@ class Util:
         return message
 
     @staticmethod
-    def get_chat_message(message):
-        print("\033[0;34m CHAT: " + message + "\033[0m")
+    def print_chat_message(message,sender):
+        print(f"\033[0;34m [CHAT] {sender}: " + message + "\033[0m")
 
 
 

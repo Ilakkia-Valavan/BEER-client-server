@@ -11,6 +11,7 @@ from battleship import Board, parse_coordinate, SHIPS
 from Utility import Util
 from ServerHandler import ServerHandler
 from PlayerServerHandler import PlayerServerHandler
+import traceback
 
 class Server:
     Clients = []
@@ -30,13 +31,17 @@ class Server:
         self.player2 = None
         self.lobby = []      # Waiting players
         self.spectators = [] # Spectators
+        self.message_queue=[]
         threading.Thread(target=self.manage_lobby).start() #will run in background
+        threading.Thread(target=self.manage_spectator).start()
 
     def listen(self):
 
         try:
             while True:
                 client_socket, address = self.socket.accept()
+                #need to work on it
+                
                 print("Connection from: " + str(address))
 
                 try:
@@ -59,76 +64,152 @@ class Server:
 
             try:
                 client_message = ast.literal_eval(client_socket.recv(1024).decode())
-                client_detail = client_message["data"]
 
-                client_detail["client_socket"] = client_socket
-                role = client_detail["client_role"].upper() 
+                if client_message["command"] == "REGISTER" : 
+                    client_detail = client_message["data"]
 
-                if role == 'P':
-                    if client_detail["session_id"] == None or client_detail["session_id"] == "":
-                        if self.player_registration(client_detail):
-                            break
-                    else: 
-                        if self.player_rejoin(client_detail) :
-                            break
-                elif role == "S":
-                    self.spectator_handler(client_detail)
+                    client_detail["client_socket"] = client_socket
+                    role = client_detail["client_role"].upper() 
+
+                    if role == 'P':
+                        if client_detail["session_id"] == None or client_detail["session_id"] == "":
+                            if self.player_registration(client_detail):
+                                break
+                        else: 
+                            if self.player_rejoin(client_detail) :
+                                break
+                    elif role == "S":
+                        self.spectator_registration(client_detail)
+                        break
 
             except Exception as e:
-                print(e)
+                print("client handler error:" ,e)
 
-    def spectator_handler(self, client_detail):
+    def spectator_registration(self, client_detail):
         self.spectators.append(client_detail)
-        client_detail["client_socket"].sendall(str(Util.get_info_message("Succesfully registered as Spectator")).encode())
-        time.sleep(2)
-        threading.Thread(target=self.manage_spectator, args=(client_detail,)).start()
+        #client_detail["client_socket"].sendall(str(Util.get_info_message("Succesfully registered as Spectator")).encode())
+        #time.sleep(1)
+        threading.Thread(target=self.spectator_chat_handler, args=(client_detail,)).start()
 
-    def manage_spectator(self, spectator):  
+    def manage_spectator(self):  
+        local_message_queue = []
         while True:
-            try:
-                if not self.game_in_progress:
-                    spectator["client_socket"].sendall(
-                        str(Util.get_info_message("No game in progress currently. You can send chat with other spectators until new game starts")).encode()
-                    )
-                    self.chat_handler_spectator(spectator)
-                    
-                else:
-                    if self.player1 and self.player2:
-                        player1_grid = self.player1["handler"].get_hidden_grid()
-                        player2_grid = self.player2["handler"].get_hidden_grid()
+            local_message_queue = []
+            try:                
+                if self.player1 and self.player2:
+                    player1_grid = self.player1["handler"].get_hidden_grid()
+                    player2_grid = self.player2["handler"].get_hidden_grid()
 
-                        spectator["client_socket"].sendall(
-                            str(Util.get_grid_message_spectators(
-                                f"{self.player1['client_name']}'s board status", player1_grid,
-                                f"{self.player2['client_name']}'s board status", player2_grid
-                            )).encode()
-                        )
+                    i = 0
+                    while len(self.spectators) > 0:
+                        spectator = self.spectators[i]
+                        try:
+
+                            spectator["client_socket"].sendall(
+                                str(Util.get_grid_message_spectators(
+                                    f"{self.player1['client_name']}'s board status", player1_grid,
+                                    f"{self.player2['client_name']}'s board status", player2_grid
+                                )).encode()
+                            )
+                        except Exception as e:
+                            print("error popping spectator in board loop :", e)
+                            a = self.spectators.pop(i)
+                            print(f"removing spectator {a["client_name"]} from queue")
+                            continue
+                        
+                        i+=1
+                        if i >= len(self.spectators):
+                            break
+                            
+                i = 0
+                print("manage spectator self message queue:", self.message_queue)
+
+                while len(self.message_queue) > 0:
+                    i+=1
+                    print("in local message queue")
+                    local_message_queue.append(self.message_queue.pop())
+                    if i == 5:
+                        break
+
+                print("local message queue: ",local_message_queue)
+                if len(local_message_queue) > 0:
                     
+                    i = 0
+                    while len(self.spectators) > 0:
+                        spectator = self.spectators[i]
+                        try:
+                            spectator["client_socket"].sendall(str(self.message_util.send_chat_list(local_message_queue)).encode())
+                        except Exception as e:
+                            print("popping spectator in chat loop :", e)                           
+                            a = self.spectators.pop(self.spectators.index(spectator))
+                            print(f"removing spectator {a["client_name"]} from queue")
+
+                            if i < len(self.spectators):
+                                continue
+                        
+                        i+=1
+                        if i >= len(self.spectators):
+                            break
 
             except Exception as e:
+                traceback.print_exc()
                 print(f"[ERROR] {e}.")
 
             time.sleep(30)
 
-    #little confusion need to work on chating
-    def chat_handler_spectator(self, spectator):
+    def spectator_chat_handler(self, spectator):
         try:
             spectator_socket = spectator["client_socket"]
             spectator_name = spectator["client_name"]
 
-            message = spectator_socket.recv(1024).decode().strip()
+            if self.game_in_progress :
+                spectator_socket.sendall(
+                    str(Util.get_info_message("Game in progress currently. You can chat with other spectators.")).encode()
+                )
+            else:
+                spectator_socket.sendall(
+                    str(Util.get_info_message("No game in progress currently. You can send chat with other spectators until new game starts")).encode()
+                )
 
-            if message:
-                # Broadcast to all other spectators
-                for other in self.spectators:
-                    try:
-                        other["client_socket"].sendall(
-                            str(self.message_util.send_chat_message(message)).encode()
-                        )
-                    except:
-                        continue  
+            while True:
+                try:
+                    raw = spectator_socket.recv(1024).decode().strip()
+                    if not raw:
+                        continue
+
+                    client_message = ast.literal_eval(raw)
+
+                    print("client message chat ",client_message)
+
+                    if client_message["message_type"] == "CHAT":
+                        chat_message = client_message["data"]["message"]
+                        sender_name = client_message["data"]["name"]
+
+                        #print(f"[CHAT] {sender_name}: {chat_message}")
+                        print("send_chat_message format: ",self.message_util.send_chat_message(chat_message, sender_name))
+
+                        self.message_queue.append(str(self.message_util.send_chat_message(chat_message, sender_name)))
+
+                        print("message_queue ",self.message_queue)
+
+                        # Broadcast to all spectators
+                        """
+                        for other in self.spectators:
+                            try:
+                                other["client_socket"].sendall(
+                                    str(self.message_util.send_chat_message(chat_message, spectator)).encode()
+                                )
+                            except Exception as e:
+                                print("error in broadcast chat ",e)
+                                continue
+                        """
+                except Exception as e:
+                    print(f"[CHAT RECEIVE ERROR] {e}")
+                    break
+
         except Exception as e:
             print(f"[CHAT ERROR] {e}")
+
 
 
 
@@ -156,13 +237,33 @@ class Server:
                 break
 
             try:
-                client_message = ast.literal_eval(current_player["client_socket"].recv(1024).decode())
-                print("game handller() client msg: ", client_message)
-                print("game handller() current client : ", current_player)
+                try:
+                    current_player["client_socket"].settimeout(32)
+
+                    client_message = ast.literal_eval(current_player["client_socket"].recv(1024).decode())
+                    print("game handller() client msg: ", client_message)
+                    print("game handller() current client : ", current_player)
+
+                except socket.timeout as te:
+                    print("in socket timeout exception")
+                    client_message = self.message_util.get_fire_command_for_server_timeout(current_player, None)
+                    current_player["timeout_count"] += 1
+
+                    if current_player["timeout_count"] == 3:
+                        #close connection
+                        #make opponent player winner
+                        #end game
+
+                    print("TIME OUT COUNT :" , current_player["timeout_count"])
+                    print("time out error in game_handler(): ",te)                    
+                    
+                except Exception as e:
+                    print("game handler timeout exception : ",e)
 
                 
                 if current_player["session_id"] == player1["session_id"]:
                     result, sunk_name, display_grid , return_message = player2_server_handler.fire_at(client_message)
+
                     player2_grid = player2_server_handler.get_hidden_grid() 
 
                     player2["client_socket"].send(str(Util.get_info_message_grid("Your board status", player2_grid)).encode())
@@ -195,7 +296,7 @@ class Server:
                     current_player = player2
 
             except Exception as e:
-                print(e)      
+                print("game handler main exception" ,e)      
         self.player1 = None
         self.player2 = None
         self.game_in_progress = False
@@ -277,6 +378,7 @@ class Server:
         if add_to_lobby:
             if client_detail["session_id"] == "" or client_detail["session_id"] == None:
                 client_detail["session_id"] = self.generate_sessionID()
+                client_detail["timeout_count"] = 0
             self.lobby.append(client_detail)
 
             #formatted error response
@@ -304,6 +406,7 @@ class Server:
         - If fewer than 2 players, notify the player(s) to wait for opponent.
         """
         notify_interval = 0
+        failure_count = 0
         try:
             while True:
                 
@@ -338,9 +441,15 @@ class Server:
                                     waiting_player["client_socket"].sendall(str(Util.get_grid_message_spectators(f"{self.player1["client_name"]}'s board status", player1_grid , f"{self.player2["client_name"]}'s board status", player2_grid)).encode())
 
         
-                        except:
+                        except Exception as e:
+                            print("error in manage lobby ",e)
                             print(f"Failed to notify {waiting_player['client_name']} in lobby.")
-    
+                            failure_count += 1
+
+                            if failure_count == 3:                       
+                                a = self.lobby.pop(self.lobby.index(waiting_player))
+                                print(f"removing {waiting_player["client_name"]} from lobby")
+   
         except KeyboardInterrupt:
             print("Server shutting down...")
             # Perform cleanup actions (e.g., closing connections)
