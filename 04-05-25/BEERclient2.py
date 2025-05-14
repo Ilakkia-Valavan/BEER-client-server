@@ -8,12 +8,25 @@ from Utility import Util
 import logging
 import time
 import msvcrt
+import logging
+import curses
+
+
 
 class Client:
     #logging.basicConfig(level=logging.DEBUG)
     #logger = logging.getLogger('beer')
+    
 
     def __init__(self, HOST, PORT):
+        self.logger = logging.getLogger()
+
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.info("hello")
+
+        self.chat_messages = []
+
+
         self.receive = True
         self.ship_detail={}
         self.ship_list=[]
@@ -35,7 +48,8 @@ class Client:
 
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect((HOST, PORT))
-        print(f"[CONNECTED] Connected to server at {HOST}:{PORT}")
+        #print(f"[CONNECTED] Connected to server at {HOST}:{PORT}")
+        self.logger.debug(f"[CONNECTED] Connected to server at {HOST}:{PORT}")
 
         self.name = input("Enter your name: ")
         if self.name == "":
@@ -83,7 +97,7 @@ class Client:
         message = self.message_util.get_spectator_registration_message(self.client)
         self.socket.sendall(str(message).encode())
         threading.Thread(target=self.receive_and_interact_with_server_spectator).start()
-        self.start_chat_loop()
+        self.start_chat_loop(stdscr)
 
     def receive_and_interact_with_server_spectator(self):
         while True:
@@ -99,31 +113,48 @@ class Client:
                     if server_message["message_type"] == "CHAT":
                         print("chat list client side :" ,server_message)
                         chat_list = server_message["chat_list"]
-                        for i in chat_list:
+                        for i in chat_list:                           
                             chat_entry = ast.literal_eval(i)
-                            Util.print_chat_message(chat_entry["message"], chat_entry["sender"])
+                            self.chat_messages.append(f"{chat_entry['sender']}: {chat_entry['message']}")
+                            #Util.print_chat_message(chat_entry["message"], chat_entry["sender"])
+
+                    
+                            
+                    if server_message["message_type"] == "GAME_LOG":
+                        print("game log list client side :" ,server_message)
+                        game_log_list = server_message["game_log_list"]
+                        for i in game_log_list:
+                            game_log = ast.literal_eval(i)
+                            Util.print_game_log_message(game_log["current_player"], game_log["result"], game_log["return_message"])
+                    
+
 
                     elif server_message["message_type"] == "INFO":
                         Util.print_info(server_message["message"])
                         if "display_grid" in server_message and server_message["display_grid"] != None:
                             #print("grid part : ",server_message)
-                            self.print_display_grid(server_message["display_grid"])
+                            #self.print_display_grid(server_message["display_grid"])
+                            self.print_display_grid_spectator(server_message["display_grid"],stdscr)
+                            
+                            
+
 
                         if "player1_grid" in server_message:
-                            Util.print_info(server_message["player1_message"])
-                            self.print_display_grid(server_message["player1_grid"])
-
-                            Util.print_info(server_message["player2_message"])
-                            self.print_display_grid(server_message["player2_grid"])
-
-
+                            #Util.print_info(server_message["player1_message"])
+                            #self.print_display_grid(server_message["player1_grid"])
+                            self.print_display_grid_spectator(server_message["player1_grid"],stdscr)
+                            
+                            #Util.print_info(server_message["player2_message"])
+                            #self.print_display_grid(server_message["player2_grid"])
+                            self.print_display_grid_spectator(server_message["player2_grid"],stdscr)
+                        
                 except Exception as e:
                     print(f"[CHAT ERROR] {e}")
 
             except Exception as e:
                     print(f"[CHAT ERROR] {e}")
                     break
-
+    """
     def start_chat_loop(self):
         def chat_loop():
             while True:
@@ -135,7 +166,52 @@ class Client:
                 except:
                     break
         threading.Thread(target=chat_loop).start()
+    """
 
+    def print_display_grid_spectator(self, grid_to_print, stdscr):
+        # Clear previous content in the window
+        stdscr.clear()
+
+        # Get the terminal height and width to ensure content fits
+        height, width = stdscr.getmaxyx()
+
+        # Calculate the board's width and set up the starting column for the board
+        board_width = width // 2  # Left half for the board
+        start_col = 0  # Start printing the board from column 0
+        start_row = 0  # Start printing from row 0
+
+        # Column headers (1 .. N)
+        column_headers = "  " + "".join(str(i + 1).rjust(2) for i in range(self.size))
+        stdscr.addstr(start_row, start_col, column_headers)  # Print column headers
+
+        # Print each row, labeled with A, B, C, ...
+        for r in range(self.size):
+            row_label = chr(ord('A') + r)  # Row labels A, B, C, ...
+            row_str = " ".join(grid_to_print[r][c] for c in range(self.size))
+            row_output = f"{row_label:2} {row_str}"
+            stdscr.addstr(start_row + r + 1, start_col, row_output)  # Print each row below the headers
+
+        # Refresh the screen to update the window
+        stdscr.refresh()
+
+    def start_chat_loop(self, stdscr):
+        def chat_loop():
+            while True:
+                try:
+                    prompt_message = Util.get_prompt_message("Enter CHAT message: ")
+                    stdscr.addstr(0, 0, prompt_message)  # Print prompt message in the terminal
+                    stdscr.refresh()
+
+                    msg = input()  # Accept chat message
+                    if msg.strip():
+                        self.socket.sendall(str(self.message_util.get_chat_messages(msg,self.client)).encode())
+                except:
+                    break
+        threading.Thread(target=chat_loop).start()
+
+
+
+        
 
 
     def player_registration(self, response_message = None):
@@ -290,6 +366,18 @@ class Client:
         print("[CLOSED] Connection closed.")
 
 
-
+"""
 if __name__ == '__main__':
     Client('127.0.0.1', 7632)
+"""
+
+import curses
+
+def main(stdscr):
+    # Initialize the Client with stdscr
+    client = Client('127.0.0.1', 7632)  # Pass the host and port to the Client
+
+# Run the curses application
+if __name__ == '__main__':
+    curses.wrapper(main)
+

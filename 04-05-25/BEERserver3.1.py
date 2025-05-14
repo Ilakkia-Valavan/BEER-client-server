@@ -29,6 +29,7 @@ class Server:
         self.players = []    # Max 2
         self.player1 = None
         self.player2 = None
+        self.game_log = []
         self.lobby = []      # Waiting players
         self.spectators = [] # Spectators
         self.message_queue=[]
@@ -93,6 +94,7 @@ class Server:
 
     def manage_spectator(self):  
         local_message_queue = []
+        local_game_log=[]
         while True:
             local_message_queue = []
             try:                
@@ -120,7 +122,7 @@ class Server:
                         i+=1
                         if i >= len(self.spectators):
                             break
-                            
+
                 i = 0
                 print("manage spectator self message queue:", self.message_queue)
 
@@ -150,6 +152,9 @@ class Server:
                         i+=1
                         if i >= len(self.spectators):
                             break
+
+                            
+                
 
             except Exception as e:
                 traceback.print_exc()
@@ -249,11 +254,6 @@ class Server:
                     client_message = self.message_util.get_fire_command_for_server_timeout(current_player, None)
                     current_player["timeout_count"] += 1
 
-                    if current_player["timeout_count"] == 3:
-                        #close connection
-                        #make opponent player winner
-                        #end game
-
                     print("TIME OUT COUNT :" , current_player["timeout_count"])
                     print("time out error in game_handler(): ",te)                    
                     
@@ -263,6 +263,8 @@ class Server:
                 
                 if current_player["session_id"] == player1["session_id"]:
                     result, sunk_name, display_grid , return_message = player2_server_handler.fire_at(client_message)
+
+                    self.game_log.append(Util.get_game_log_message(current_player,result,sunk_name, return_message))
 
                     player2_grid = player2_server_handler.get_hidden_grid() 
 

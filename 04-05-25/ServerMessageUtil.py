@@ -65,6 +65,11 @@ class ServerMessageUtil:
         message = {"message_type" : "CHAT", "chat_list": chat_list}
         return message
 
+    def send_game_log_list(self, game_log_list):
+        message = {"message_type" : "GAME_LOG", "game_log_list": game_log_list}
+        return message
+
+
     def get_fire_command_for_server_timeout(self,client_detail, position):
         message = {"message_type": "ACTION", "command": "FIRE" , "data":{ "position" : position, "session_id" : client_detail["session_id"]}}
 

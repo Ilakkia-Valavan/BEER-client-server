@@ -34,5 +34,14 @@ class Util:
     def print_chat_message(message,sender):
         print(f"\033[0;34m [CHAT] {sender}: " + message + "\033[0m")
 
+    @staticmethod
+    def get_game_log_message(current_player,result,sunk_name, return_message):
+        message = {"message_type": "GAME_LOG","return_message" : return_message ,"result" : result ,"current_player" : current_player["client_name"], "sunk_name" : sunk_name}
+        return message
+
+    def print_game_log_message(name,result,return_message):
+        print(f"\033[0;34m [GAME LOG] name: {name} , result : {result} ,  " + return_message + "\033[0m")
+
+
 
 

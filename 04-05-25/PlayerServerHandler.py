@@ -49,7 +49,16 @@ class PlayerServerHandler:
                         break
                 if current_ship == None:
                     self.client_detail["client_socket"].send(str(Util.get_info_message("All ships have been placed. Wait for oponent to place ships")).encode())
+
+                    hidden_grid = self.get_hidden_grid()
+                    time.sleep(1)
+                    self.client_detail["client_socket"].send(str(Util.get_info_message_grid("Your Board" , hidden_grid)).encode())
+                    
                     break
+                
+                hidden_grid = self.get_hidden_grid()
+                self.client_detail["client_socket"].send(str(Util.get_info_message_grid("Your Board" , hidden_grid)).encode())
+                time.sleep(1)
                     
                 self.client_detail["client_socket"].send(str(self.message_util.get_place_ship_message(current_ship)).encode())
                 client_message = ast.literal_eval(self.client_detail["client_socket"].recv(1024).decode())
