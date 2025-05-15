@@ -18,6 +18,7 @@ import os
 
 
 
+
 class Client:
     #logging.basicConfig(level=logging.DEBUG)
     #logger = logging.getLogger('beer')
@@ -96,18 +97,18 @@ class Client:
         self.player2_grid = player2_grid
         self.needs_update = True
 
-    def update_chat(self, chat_list):
+    def update_chat(self, chat_entry):
         new_messages = []
-        for i in chat_list:
-            print("[DEBUG] Received chat item:", i)
-            chat_entry = ast.literal_eval(i)
-            formatted_message = f"[{chat_entry['sender']}] {chat_entry['message']}"
-            if formatted_message not in self.chat_messages:
-                new_messages.append(formatted_message)
-                self.needs_update = True
+        #for i in chat_list:
+
+        #chat_entry = ast.literal_eval(i)
+
+        formatted_message = (f"[{chat_entry['sender']}]:{chat_entry['message']}")
+
+        if formatted_message not in self.chat_messages:
+            new_messages.append(formatted_message)
+            self.needs_update = True
         self.chat_messages.extend(new_messages)
-
-
 
 
     def render_board(self):
@@ -189,10 +190,11 @@ class Client:
                     if server_message["message_type"] == "CHAT":
                         #print("chat list client side :" ,server_message)
                         chat_list = server_message["chat_list"]
-                        self.update_chat(chat_list)
+                        
 
-                        #for i in chat_list:
-                            #chat_entry = ast.literal_eval(i)
+                        for i in chat_list:
+                            chat_entry = ast.literal_eval(i)
+                            self.update_chat(chat_entry)
                             #Util.print_chat_message(chat_entry["message"], chat_entry["sender"])
 
                     elif server_message["message_type"] == "INFO":
