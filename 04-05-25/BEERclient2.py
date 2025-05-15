@@ -8,29 +8,34 @@ from Utility import Util
 import logging
 import time
 import msvcrt
-import logging
-import curses
+from rich.panel import Panel
+from rich.layout import Layout
+from rich.live import Live
+import time
+from rich.console import Console
+import os
+
 
 
 
 class Client:
     #logging.basicConfig(level=logging.DEBUG)
     #logger = logging.getLogger('beer')
-    
 
     def __init__(self, HOST, PORT):
-        self.logger = logging.getLogger()
-
-        self.logger.setLevel(logging.DEBUG)
-        self.logger.info("hello")
-
-        self.chat_messages = []
-
-
         self.receive = True
         self.ship_detail={}
         self.ship_list=[]
         self.size = 10
+
+        self.needs_update = False
+        self.console = Console()
+
+
+        self.player1_grid = []
+        self.player2_grid =[]
+        self.chat_messages = []
+
         """
         self.name = input("Enter your name: ")
         self.ID = input("Enter your ID: ")
@@ -48,8 +53,7 @@ class Client:
 
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect((HOST, PORT))
-        #print(f"[CONNECTED] Connected to server at {HOST}:{PORT}")
-        self.logger.debug(f"[CONNECTED] Connected to server at {HOST}:{PORT}")
+        print(f"[CONNECTED] Connected to server at {HOST}:{PORT}")
 
         self.name = input("Enter your name: ")
         if self.name == "":
@@ -87,6 +91,67 @@ class Client:
 
         return char
 
+    def update_board(self, player1_grid, player2_grid):
+        self.player1_grid = player1_grid
+        self.player2_grid = player2_grid
+        self.needs_update = True
+
+    def update_chat(self, chat_list):
+        new_messages = []
+        for i in chat_list:
+            chat_entry = ast.literal_eval(i)
+            formatted_message = f"[{chat_entry["sender"]}] {chat_entry["message"]}"
+            if formatted_message not in self.chat_messages:
+                new_messages.append(formatted_message)
+                self.needs_update = True
+        self.chat_messages.extend(new_messages)
+
+
+
+
+    def render_board(self):
+        def grid_to_str(grid):
+            size = len(grid)
+            rows = []
+            rows.append("  " + "".join(str(i + 1).rjust(2) for i in range(size)))
+            for r in range(size):
+                row_label = chr(ord('A') + r)
+                row_str = " ".join(grid[r][c] for c in range(size))
+                rows.append(f"{row_label:2} {row_str}")
+            return "\n".join(rows)
+
+        board_text = ""
+        if self.player1_grid:
+            board_text += "Player 1:\n" + grid_to_str(self.player1_grid) + "\n\n"
+        if self.player2_grid:
+            board_text += "Player 2:\n" + grid_to_str(self.player2_grid)
+
+        return Panel(board_text or "Waiting for board data...", title="Game Board", border_style="green")
+
+    def render_chat(self):
+        chat_text = "\n".join(self.chat_messages) or "No messages yet."
+        return Panel(chat_text, title="Chat", border_style="blue")
+
+    def render_layout(self):
+        layout = Layout()
+        layout.split_row(
+            Layout(self.render_board(), name="left"),
+            Layout(self.render_chat(), name="right"),
+        )
+        return layout
+
+    def live_ui_loop(self):
+        with Live(self.render_layout(), refresh_per_second=4, console=self.console, screen=True) as live:
+            self.live = live
+            while True:
+                if self.needs_update:
+                    live.update(self.render_layout())
+                    self.needs_update = False
+                time.sleep(0.25)
+
+
+
+
     def spectator_register(self, response_message = None):
         self.client = {
                 'client_name': self.name,
@@ -97,11 +162,30 @@ class Client:
         message = self.message_util.get_spectator_registration_message(self.client)
         self.socket.sendall(str(message).encode())
         threading.Thread(target=self.receive_and_interact_with_server_spectator).start()
-        self.start_chat_loop(stdscr)
+        self.start_chat_loop()
+
+        # Start live UI update loop
+        threading.Thread(target=self.live_ui_loop, daemon=True).start()
+
+        # Keep the main thread alive
+        while True:
+            time.sleep(0.5)
+
+        """
+        os.system('cls' if os.name == 'nt' else 'clear')
+        with Live(self.render_layout(), refresh_per_second=4, console=Console()) as live:
+            self.live = live  # store to update later
+            self.start_chat_loop()
+            while True:
+                time.sleep(0.1)  # just keep alive
+
+        """
+
+
 
     def receive_and_interact_with_server_spectator(self):
         while True:
-            print("in while loop")
+            #print("in while loop")
             try:           
                 message = self.socket.recv(4096).decode()
                 #print("receive_and_interact_with_server-> " ,message)
@@ -111,50 +195,40 @@ class Client:
                     
                     server_message = ast.literal_eval(message)
                     if server_message["message_type"] == "CHAT":
-                        print("chat list client side :" ,server_message)
+                        #print("chat list client side :" ,server_message)
                         chat_list = server_message["chat_list"]
-                        for i in chat_list:                           
-                            chat_entry = ast.literal_eval(i)
-                            self.chat_messages.append(f"{chat_entry['sender']}: {chat_entry['message']}")
+                        self.update_chat(chat_list)
+
+                        #for i in chat_list:
+                            #chat_entry = ast.literal_eval(i)
                             #Util.print_chat_message(chat_entry["message"], chat_entry["sender"])
-
-                    
-                            
-                    if server_message["message_type"] == "GAME_LOG":
-                        print("game log list client side :" ,server_message)
-                        game_log_list = server_message["game_log_list"]
-                        for i in game_log_list:
-                            game_log = ast.literal_eval(i)
-                            Util.print_game_log_message(game_log["current_player"], game_log["result"], game_log["return_message"])
-                    
-
 
                     elif server_message["message_type"] == "INFO":
                         Util.print_info(server_message["message"])
                         if "display_grid" in server_message and server_message["display_grid"] != None:
                             #print("grid part : ",server_message)
-                            #self.print_display_grid(server_message["display_grid"])
-                            self.print_display_grid_spectator(server_message["display_grid"],stdscr)
-                            
-                            
-
+                            self.print_display_grid(server_message["display_grid"])
 
                         if "player1_grid" in server_message:
                             #Util.print_info(server_message["player1_message"])
                             #self.print_display_grid(server_message["player1_grid"])
-                            self.print_display_grid_spectator(server_message["player1_grid"],stdscr)
-                            
+
                             #Util.print_info(server_message["player2_message"])
                             #self.print_display_grid(server_message["player2_grid"])
-                            self.print_display_grid_spectator(server_message["player2_grid"],stdscr)
-                        
+
+                            self.update_board(server_message["player1_grid"], server_message["player2_grid"])
+                                    # Refresh the live UI
+                    if hasattr(self, 'live'):
+                        self.live.update(self.render_layout())
+
+
                 except Exception as e:
-                    print(f"[CHAT ERROR] {e}")
+                    console.log(f"[CHAT ERROR] {e}")
 
             except Exception as e:
                     print(f"[CHAT ERROR] {e}")
                     break
-    """
+
     def start_chat_loop(self):
         def chat_loop():
             while True:
@@ -166,52 +240,7 @@ class Client:
                 except:
                     break
         threading.Thread(target=chat_loop).start()
-    """
 
-    def print_display_grid_spectator(self, grid_to_print, stdscr):
-        # Clear previous content in the window
-        stdscr.clear()
-
-        # Get the terminal height and width to ensure content fits
-        height, width = stdscr.getmaxyx()
-
-        # Calculate the board's width and set up the starting column for the board
-        board_width = width // 2  # Left half for the board
-        start_col = 0  # Start printing the board from column 0
-        start_row = 0  # Start printing from row 0
-
-        # Column headers (1 .. N)
-        column_headers = "  " + "".join(str(i + 1).rjust(2) for i in range(self.size))
-        stdscr.addstr(start_row, start_col, column_headers)  # Print column headers
-
-        # Print each row, labeled with A, B, C, ...
-        for r in range(self.size):
-            row_label = chr(ord('A') + r)  # Row labels A, B, C, ...
-            row_str = " ".join(grid_to_print[r][c] for c in range(self.size))
-            row_output = f"{row_label:2} {row_str}"
-            stdscr.addstr(start_row + r + 1, start_col, row_output)  # Print each row below the headers
-
-        # Refresh the screen to update the window
-        stdscr.refresh()
-
-    def start_chat_loop(self, stdscr):
-        def chat_loop():
-            while True:
-                try:
-                    prompt_message = Util.get_prompt_message("Enter CHAT message: ")
-                    stdscr.addstr(0, 0, prompt_message)  # Print prompt message in the terminal
-                    stdscr.refresh()
-
-                    msg = input()  # Accept chat message
-                    if msg.strip():
-                        self.socket.sendall(str(self.message_util.get_chat_messages(msg,self.client)).encode())
-                except:
-                    break
-        threading.Thread(target=chat_loop).start()
-
-
-
-        
 
 
     def player_registration(self, response_message = None):
@@ -366,18 +395,6 @@ class Client:
         print("[CLOSED] Connection closed.")
 
 
-"""
+
 if __name__ == '__main__':
     Client('127.0.0.1', 7632)
-"""
-
-import curses
-
-def main(stdscr):
-    # Initialize the Client with stdscr
-    client = Client('127.0.0.1', 7632)  # Pass the host and port to the Client
-
-# Run the curses application
-if __name__ == '__main__':
-    curses.wrapper(main)
-

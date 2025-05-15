@@ -33,6 +33,7 @@ class Util:
     @staticmethod
     def print_chat_message(message,sender):
         print(f"\033[0;34m [CHAT] {sender}: " + message + "\033[0m")
+        #print(f"\033[0;34m{f'[CHAT] {sender} : {message}':>70}\033[0m")
 
     @staticmethod
     def get_game_log_message(current_player,result,sunk_name, return_message):
