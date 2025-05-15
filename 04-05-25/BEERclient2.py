@@ -99,8 +99,9 @@ class Client:
     def update_chat(self, chat_list):
         new_messages = []
         for i in chat_list:
+            print("[DEBUG] Received chat item:", i)
             chat_entry = ast.literal_eval(i)
-            formatted_message = f"[{chat_entry["sender"]}] {chat_entry["message"]}"
+            formatted_message = f"[{chat_entry['sender']}] {chat_entry['message']}"
             if formatted_message not in self.chat_messages:
                 new_messages.append(formatted_message)
                 self.needs_update = True
@@ -171,15 +172,6 @@ class Client:
         while True:
             time.sleep(0.5)
 
-        """
-        os.system('cls' if os.name == 'nt' else 'clear')
-        with Live(self.render_layout(), refresh_per_second=4, console=Console()) as live:
-            self.live = live  # store to update later
-            self.start_chat_loop()
-            while True:
-                time.sleep(0.1)  # just keep alive
-
-        """
 
 
 
