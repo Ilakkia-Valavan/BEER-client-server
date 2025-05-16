@@ -14,6 +14,8 @@ from rich.live import Live
 import time
 from rich.console import Console
 import os
+from PacketUtil import PacketUtil
+from PacketUtil import INFO_MESSAGE, ACTION_MESSAGE, CHAT_MESSAGE, GAME_LOG_MESSAGE, RESPONSE_MESSAGE 
 
 
 
@@ -28,6 +30,8 @@ class Client:
         self.ship_detail={}
         self.ship_list=[]
         self.size = 10
+        self.packet_util = PacketUtil()
+
 
         self.needs_update = False
         self.console = Console()
@@ -162,7 +166,8 @@ class Client:
             }
         self.message_util = ClientMessageUtil()
         message = self.message_util.get_spectator_registration_message(self.client)
-        self.socket.sendall(str(message).encode())
+        #self.socket.sendall(str(message).encode())
+        self.socket.sendall(self.packet_util.create_packet(ACTION_MESSAGE,str(message)))
         threading.Thread(target=self.receive_and_interact_with_server_spectator).start()
         self.start_chat_loop()
 
@@ -180,13 +185,15 @@ class Client:
         while True:
             #print("in while loop")
             try:           
-                message = self.socket.recv(4096).decode()
+                #message = self.socket.recv(4096).decode()
+                server_message = self.packet_util.receive_message(self.socket)
+                #server_message = self.packet_util.receive_message(self.socket)
                 #print("receive_and_interact_with_server-> " ,message)
 
                 # Try to parse as dict (structured message)
                 try:
                     
-                    server_message = ast.literal_eval(message)
+                    #server_message = ast.literal_eval(message)
                     if server_message["message_type"] == "CHAT":
                         #print("chat list client side :" ,server_message)
                         chat_list = server_message["chat_list"]
@@ -228,9 +235,11 @@ class Client:
             while True:
                 try:
                     prompt_message = Util.get_prompt_message("Enter CHAT message: ")
-                    msg = input()  # Accept chat message
+                    msg = input("Enter CHAT message: ")  # need to make cursor visible
                     if msg.strip():
-                        self.socket.sendall(str(self.message_util.get_chat_messages(msg,self.client)).encode())
+                        #self.socket.sendall(str(self.message_util.get_chat_messages(msg,self.client)).encode())
+                        self.socket.sendall(self.packet_util.create_packet(CHAT_MESSAGE,str(self.message_util.get_chat_messages(msg,self.client))))
+
                 except:
                     break
         threading.Thread(target=chat_loop).start()
@@ -253,7 +262,11 @@ class Client:
                 'session_id': self.session_id
             }
             message = self.message_util.get_registration_message(self.client)
-            self.socket.sendall(str(message).encode())
+
+            
+
+            self.socket.sendall(self.packet_util.create_packet(ACTION_MESSAGE,str(message))) 
+
             threading.Thread(target=self.receive_and_interact_with_server).start()
         
         else:
@@ -264,7 +277,9 @@ class Client:
                 message = self.message_util.get_registration_message(self.client)
                 print("in player_registration 2")
                 print(message)
-                self.socket.sendall(str(message).encode()) 
+                self.socket.sendall(self.packet_util.create_packet(ACTION_MESSAGE,str(message))) 
+
+                #self.socket.sendall(str(message).encode()) 
                 self.receive = True
             
             elif response_message["response_status"] == "FAIL" and response_message["error_code"] == "ERR001":
@@ -273,7 +288,9 @@ class Client:
                 message = self.message_util.get_registration_message(self.client)
                 print("in player_registration 2")
                 print(message)
-                self.socket.sendall(str(message).encode()) 
+                self.socket.sendall(self.packet_util.create_packet(ACTION_MESSAGE,str(message))) 
+
+                #self.socket.sendall(str(message).encode()) 
                 self.receive = True
             
             else:
@@ -294,7 +311,9 @@ class Client:
             message = self.message_util.get_ship_placement_message(ship_detail, position, direction.upper(), self.client)
 
             print("place ship: ", message)
-            self.socket.sendall(str(message).encode())
+            self.socket.sendall(self.packet_util.create_packet(ACTION_MESSAGE,str(message))) 
+
+            #self.socket.sendall(str(message).encode())
 
         elif server_message["command"] == "FIRE":
             message = Util.get_prompt_message(server_message["message"] + " (within 30 seconds.)")
@@ -303,13 +322,17 @@ class Client:
             #position = input(message)
             position = self.get_user_input(message)
             message = self.message_util.get_fire_command(self.client, position)
-            self.socket.sendall(str(message).encode())
+            self.socket.sendall(self.packet_util.create_packet(ACTION_MESSAGE,str(message))) 
+
+            #self.socket.sendall(str(message).encode())
 
         elif server_message["command"] == "CONTINUE":
             message = Util.get_prompt_message(server_message["message"])
             answer = input(message)
             message = self.message_util.get_continue_message(self.client,answer)
-            self.socket.sendall(str(message).encode())
+            self.socket.sendall(self.packet_util.create_packet(ACTION_MESSAGE,str(message))) 
+
+            #self.socket.sendall(str(message).encode())
 
     def print_display_grid(self, grid_to_print):
         """
@@ -342,13 +365,14 @@ class Client:
         while True:
             print("in while loop")
             try:           
-                message = self.socket.recv(4096).decode()
-                print("receive_and_interact_with_server-> " ,message)
+                #message = self.socket.recv(4096).decode()
+                server_message = self.packet_util.receive_message(self.socket)
+                print("receive_and_interact_with_server-> " ,server_message)
 
                 # Try to parse as dict (structured message)
                 try:
                     #change
-                    server_message = ast.literal_eval(message)
+                    #server_message = ast.literal_eval(message)
 
                     if server_message["message_type"] == "RESPONSE" and server_message["command"] == "REGISTER":
                         #self.player_registration(server_message)

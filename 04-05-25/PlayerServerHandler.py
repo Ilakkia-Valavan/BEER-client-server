@@ -9,6 +9,8 @@ import time
 from ServerMessageUtil import ServerMessageUtil
 from battleship import Board, parse_coordinate, SHIPS
 from Utility import Util
+from PacketUtil import PacketUtil
+from PacketUtil import INFO_MESSAGE, ACTION_MESSAGE, CHAT_MESSAGE, GAME_LOG_MESSAGE, RESPONSE_MESSAGE 
 
 class PlayerServerHandler:
     message_util = ServerMessageUtil()
@@ -17,6 +19,7 @@ class PlayerServerHandler:
         self.client_detail = client_detail
         self.board = Board(client_detail["client_name"])
         self.ships = SHIPS
+        self.packet_util = PacketUtil()
         self.ship_detail = {}
         self.ship_list = []
         for i in self.ships:
@@ -48,20 +51,27 @@ class PlayerServerHandler:
                         current_ship = ship_detail
                         break
                 if current_ship == None:
-                    self.client_detail["client_socket"].send(str(Util.get_info_message("All ships have been placed. Wait for oponent to place ships")).encode())
+                    #self.client_detail["client_socket"].send(str(Util.get_info_message("All ships have been placed. Wait for oponent to place ships")).encode())
+
+                    self.client_detail['client_socket'].sendall(self.packet_util.create_packet(INFO_MESSAGE,str(Util.get_info_message("All ships have been placed. Wait for oponent to place ships"))))
 
                     hidden_grid = self.get_hidden_grid()
                     time.sleep(1)
-                    self.client_detail["client_socket"].send(str(Util.get_info_message_grid("Your Board" , hidden_grid)).encode())
+                    #self.client_detail["client_socket"].send(str(Util.get_info_message_grid("Your Board" , hidden_grid)).encode())
+                    self.client_detail['client_socket'].sendall(self.packet_util.create_packet(INFO_MESSAGE,str(Util.get_info_message_grid("Your Board" , hidden_grid))))
                     
                     break
                 
                 hidden_grid = self.get_hidden_grid()
-                self.client_detail["client_socket"].send(str(Util.get_info_message_grid("Your Board" , hidden_grid)).encode())
+                #self.client_detail["client_socket"].send(str(Util.get_info_message_grid("Your Board" , hidden_grid)).encode())
+                self.client_detail['client_socket'].sendall(self.packet_util.create_packet(INFO_MESSAGE,str(Util.get_info_message_grid("Your Board" , hidden_grid))))
                 time.sleep(1)
                     
-                self.client_detail["client_socket"].send(str(self.message_util.get_place_ship_message(current_ship)).encode())
-                client_message = ast.literal_eval(self.client_detail["client_socket"].recv(1024).decode())
+                #self.client_detail["client_socket"].send(str(self.message_util.get_place_ship_message(current_ship)).encode())
+                self.client_detail['client_socket'].sendall(self.packet_util.create_packet(ACTION_MESSAGE,str(self.message_util.get_place_ship_message(current_ship))))
+
+                #client_message = ast.literal_eval(self.client_detail["client_socket"].recv(1024).decode())
+                client_message = self.packet_util.receive_message(self.client_detail["client_socket"])
                 print(client_message)
 
                 try:
@@ -91,7 +101,8 @@ class PlayerServerHandler:
                 if current_ship["ship_placed"] == "no":
                     message = f"  [!] Cannot place {client_message["data"]["ship_name"]} at {client_message["data"]["position"]} (orientation={client_message["data"]["direction"]}). Try again."
 
-                    self.client_detail["client_socket"].send(str(Util.get_info_message(message)).encode())
+                    #self.client_detail["client_socket"].send(str(Util.get_info_message(message)).encode())
+                    self.client_detail['client_socket'].sendall(self.packet_util.create_packet(INFO_MESSAGE,str(Util.get_info_message(message))))
 
 
                 

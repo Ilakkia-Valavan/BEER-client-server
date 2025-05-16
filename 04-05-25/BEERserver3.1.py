@@ -12,6 +12,8 @@ from Utility import Util
 from ServerHandler import ServerHandler
 from PlayerServerHandler import PlayerServerHandler
 import traceback
+from PacketUtil import PacketUtil
+from PacketUtil import INFO_MESSAGE, ACTION_MESSAGE, CHAT_MESSAGE, GAME_LOG_MESSAGE, RESPONSE_MESSAGE 
 
 class Server:
     Clients = []
@@ -23,6 +25,7 @@ class Server:
         self.socket.listen()
         self.game_in_progress = False 
         self.message_util = ServerMessageUtil()
+        self.packet_util = PacketUtil()
 
         print(f"[LISTENING] Server is listening on {HOST}:{PORT}")
 
@@ -64,7 +67,9 @@ class Server:
         while True:
 
             try:
-                client_message = ast.literal_eval(client_socket.recv(1024).decode())
+                client_message = self.packet_util.receive_message(client_socket)
+                print("client handler client message ",client_message)
+                #client_message = ast.literal_eval(client_socket.recv(1024).decode())
 
                 if client_message["command"] == "REGISTER" : 
                     client_detail = client_message["data"]
@@ -107,12 +112,13 @@ class Server:
                         spectator = self.spectators[i]
                         try:
 
-                            spectator["client_socket"].sendall(
-                                str(Util.get_grid_message_spectators(
+                            #spectator["client_socket"].sendall(str(Util.get_grid_message_spectators(f"{self.player1['client_name']}'s board status", player1_grid,f"{self.player2['client_name']}'s board status", player2_grid)).encode())
+
+                            spectator['client_socket'].sendall(self.packet_util.create_packet(INFO_MESSAGE,str(Util.get_grid_message_spectators(
                                     f"{self.player1['client_name']}'s board status", player1_grid,
                                     f"{self.player2['client_name']}'s board status", player2_grid
-                                )).encode()
-                            )
+                                ))))
+
                         except Exception as e:
                             print("error popping spectator in board loop :", e)
                             a = self.spectators.pop(i)
@@ -140,7 +146,8 @@ class Server:
                     while len(self.spectators) > 0:
                         spectator = self.spectators[i]
                         try:
-                            spectator["client_socket"].sendall(str(self.message_util.send_chat_list(local_message_queue)).encode())
+                            #spectator["client_socket"].sendall(str(self.message_util.send_chat_list(local_message_queue)).encode())
+                            spectator['client_socket'].sendall(self.packet_util.create_packet(CHAT_MESSAGE,str(self.message_util.send_chat_list(local_message_queue))))
                         except Exception as e:
                             print("popping spectator in chat loop :", e)                           
                             a = self.spectators.pop(self.spectators.index(spectator))
@@ -168,21 +175,22 @@ class Server:
             spectator_name = spectator["client_name"]
 
             if self.game_in_progress :
-                spectator_socket.sendall(
-                    str(Util.get_info_message("Game in progress currently. You can chat with other spectators.")).encode()
-                )
+                #spectator_socket.sendall(str(Util.get_info_message("Game in progress currently. You can chat with other spectators.")).encode())
+
+                spectator['client_socket'].sendall(self.packet_util.create_packet(INFO_MESSAGE,str(Util.get_info_message("Game in progress currently. You can chat with other spectators."))))
             else:
-                spectator_socket.sendall(
-                    str(Util.get_info_message("No game in progress currently. You can send chat with other spectators until new game starts")).encode()
-                )
+                #spectator_socket.sendall(str(Util.get_info_message("No game in progress currently. You can send chat with other spectators until new game starts")).encode())
+
+                spectator['client_socket'].sendall(self.packet_util.create_packet(INFO_MESSAGE,str(Util.get_info_message("No game in progress currently. You can chat with other spectators until new game starts."))))
 
             while True:
                 try:
-                    raw = spectator_socket.recv(1024).decode().strip()
-                    if not raw:
-                        continue
-
-                    client_message = ast.literal_eval(raw)
+                    #raw = spectator_socket.recv(1024).decode().strip()
+                    client_message = self.packet_util.receive_message(spectator['client_socket'])
+                    #if not raw:
+                        #continue
+                    
+                    #client_message = ast.literal_eval(raw)
 
                     print("client message chat ",client_message)
 
@@ -226,8 +234,13 @@ class Server:
         self.player1["handler"] = player1_server_handler
         self.player2["handler"] = player2_server_handler
 
-        player1['client_socket'].send(str(Util.get_info_message(f"Match started! You are playing with {player2["client_name"]}.\n")).encode())
-        player2['client_socket'].send(str(Util.get_info_message(f"Match started! You are Player 2. Wait for {player1["client_name"]} to place ships\n")).encode())
+        #player1['client_socket'].send(str(Util.get_info_message(f"Match started! You are playing with {player2["client_name"]}.\n")).encode())
+
+        player1['client_socket'].sendall(self.packet_util.create_packet(INFO_MESSAGE,str(Util.get_info_message(f"Match started! You are playing with {player2["client_name"]}.\n")))) 
+
+        #player2['client_socket'].send(str(Util.get_info_message(f"Match started! You are Player 2. Wait for {player1["client_name"]} to place ships\n")).encode())
+
+        player2['client_socket'].sendall(self.packet_util.create_packet(INFO_MESSAGE,str(Util.get_info_message(f"Match started!You are Player 2. Wait for {player1["client_name"]}to place ships.\n")))) 
 
         player1_server_handler.place_ship()
         player2_server_handler.place_ship()
@@ -237,15 +250,17 @@ class Server:
 
         while True:
             if not game_over:
-                current_player['client_socket'].send(str(self.message_util.get_fire_request()).encode())
+                #current_player['client_socket'].send(str(self.message_util.get_fire_request()).encode())
+                current_player['client_socket'].sendall(self.packet_util.create_packet(ACTION_MESSAGE,str(self.message_util.get_fire_request())))
+
             else:
                 break
 
             try:
                 try:
                     current_player["client_socket"].settimeout(32)
-
-                    client_message = ast.literal_eval(current_player["client_socket"].recv(1024).decode())
+                    client_message = self.packet_util.receive_message(current_player["client_socket"])
+                    #client_message = ast.literal_eval(current_player["client_socket"].recv(1024).decode())
                     print("game handller() client msg: ", client_message)
                     print("game handller() current client : ", current_player)
 
@@ -268,8 +283,12 @@ class Server:
 
                     player2_grid = player2_server_handler.get_hidden_grid() 
 
-                    player2["client_socket"].send(str(Util.get_info_message_grid("Your board status", player2_grid)).encode())
-                    current_player['client_socket'].send(str(Util.get_info_message_grid(return_message, display_grid)).encode()) 
+                    #player2["client_socket"].send(str(Util.get_info_message_grid("Your board status", player2_grid)).encode())
+                    player2['client_socket'].sendall(self.packet_util.create_packet(INFO_MESSAGE,str(Util.get_info_message_grid("Your board status", player2_grid))))
+
+
+                    #current_player['client_socket'].send(str(Util.get_info_message_grid(return_message, display_grid)).encode()) 
+                    current_player['client_socket'].sendall(self.packet_util.create_packet(INFO_MESSAGE,str(Util.get_info_message_grid(return_message, display_grid))))
 
                     if player2_server_handler.is_game_over():
                         game_over = True
@@ -280,8 +299,14 @@ class Server:
                     result, sunk_name, display_grid, return_message = player1_server_handler.fire_at(client_message)
                     player1_grid = player1_server_handler.get_hidden_grid() 
 
-                    player1["client_socket"].send(str(Util.get_info_message_grid("Your board status", player1_grid)).encode())
-                    current_player['client_socket'].send(str(Util.get_info_message_grid(return_message, display_grid)).encode()) 
+                    #player1["client_socket"].send(str(Util.get_info_message_grid("Your board status", player1_grid)).encode())
+
+                    player1['client_socket'].sendall(self.packet_util.create_packet(INFO_MESSAGE,str(Util.get_info_message_grid("Your board status", player1_grid))))
+
+
+                    #current_player['client_socket'].send(str(Util.get_info_message_grid(return_message, display_grid)).encode()) 
+
+                    current_player['client_socket'].sendall(self.packet_util.create_packet(INFO_MESSAGE,str(Util.get_info_message_grid(return_message, display_grid))))
 
                     if player1_server_handler.is_game_over():         
                         game_over = True
@@ -305,13 +330,18 @@ class Server:
 
     def want_to_continue(self,client_detail,win_the_game):
         if not win_the_game:
-            #client_detail['client_socket'].send(str(Util.get_info_message(f"\nCongratulations! You sank all ships.")).encode())
 
-            client_detail['client_socket'].send(str(Util.get_info_message(f"\nYou Lost the game.")).encode())
+            #client_detail['client_socket'].send(str(Util.get_info_message(f"\nYou Lost the game.")).encode())
+
+            client_detail['client_socket'].sendall(self.packet_util.create_packet(INFO_MESSAGE,str(Util.get_info_message(f"\nYou Lost the game."))))
+
         time.sleep(1)
         while True:
-            client_detail["client_socket"].send(str(self.message_util.get_want_to_continue_message()).encode())
-            client_message = ast.literal_eval(client_detail["client_socket"].recv(1024).decode())
+            #client_detail["client_socket"].send(str(self.message_util.get_want_to_continue_message()).encode())
+            client_detail['client_socket'].sendall(self.packet_util.create_packet(ACTION_MESSAGE,str(self.message_util.get_want_to_continue_message())))
+
+            client_message = self.packet_util.receive_message(client_detail["client_socket"])
+            #client_message = ast.literal_eval(client_detail["client_socket"].recv(1024).decode())
             data = client_message["data"] #contains ans and session id
             
             if data["answer"] == "y" :
@@ -355,11 +385,14 @@ class Server:
         if not rejoined:
             #INVALID OR GAME OVER
             rejoin_response= self.message_util.get_rejoin_response(client_detail,"FAIL","ERR001","Invalid session ID/Session timeout.Failed to rejoin")
-            client_detail["client_socket"].sendall(str(rejoin_response).encode()) #enter correct session id or leave blank to register again
+            #client_detail["client_socket"].sendall(str(rejoin_response).encode()) #enter correct session id or leave blank to register again
+
+            client_detail['client_socket'].sendall(self.packet_util.create_packet(RESPONSE_MESSAGE,str(rejoin_response)))
         
         else: 
             rejoin_response = self.message_util.get_rejoin_response(client_detail,"SUCCESS")
-            client_detail["client_socket"].sendall(str(rejoin_response).encode())
+            #client_detail["client_socket"].sendall(str(rejoin_response).encode())
+            client_detail['client_socket'].sendall(self.packet_util.create_packet(RESPONSE_MESSAGE,str(rejoin_response)))
         print("rejoin : 1 : " , rejoined)
 
         return rejoined 
@@ -385,13 +418,15 @@ class Server:
 
             #formatted error response
             registration_response = self.message_util.get_registration_response(client_detail,"SUCCESS")
-            client_detail["client_socket"].sendall(str(registration_response).encode())
+            #client_detail["client_socket"].sendall(str(registration_response).encode())
+            client_detail['client_socket'].sendall(self.packet_util.create_packet(RESPONSE_MESSAGE,str(registration_response)))
             return True
 
         else:
             #formatted error response
             registration_response= self.message_util.get_registration_response(client_detail,"FAIL","DUP001","user ID exists")
-            client_detail["client_socket"].sendall(str(registration_response).encode())
+            #client_detail["client_socket"].sendall(str(registration_response).encode())
+            client_detail['client_socket'].sendall(self.packet_util.create_packet(RESPONSE_MESSAGE,str(registration_response)))
         return False
 
                
@@ -432,7 +467,8 @@ class Server:
                         message = self.message_util.get_queue_wait_message(i, len(self.lobby))
                         
                         try:
-                            waiting_player["client_socket"].sendall(str(message).encode())
+                            #waiting_player["client_socket"].sendall(str(message).encode())
+                            waiting_player['client_socket'].sendall(self.packet_util.create_packet(INFO_MESSAGE,str(message)))
 
                             if self.game_in_progress:
 
@@ -440,7 +476,9 @@ class Server:
                                     player1_grid = self.player1["handler"].get_hidden_grid()
                                     player2_grid = self.player2["handler"].get_hidden_grid()
 
-                                    waiting_player["client_socket"].sendall(str(Util.get_grid_message_spectators(f"{self.player1["client_name"]}'s board status", player1_grid , f"{self.player2["client_name"]}'s board status", player2_grid)).encode())
+                                    #waiting_player["client_socket"].sendall(str(Util.get_grid_message_spectators(f"{self.player1["client_name"]}'s board status", player1_grid , f"{self.player2["client_name"]}'s board status", player2_grid)).encode())
+
+                                    waiting_player['client_socket'].sendall(self.packet_util.create_packet(INFO_MESSAGE,str(Util.get_grid_message_spectators(f"{self.player1["client_name"]}'s board status", player1_grid , f"{self.player2["client_name"]}'s board status", player2_grid))))
 
         
                         except Exception as e:
