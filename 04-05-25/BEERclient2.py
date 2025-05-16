@@ -14,6 +14,18 @@ from rich.live import Live
 import time
 from rich.console import Console
 import os
+from prompt_toolkit import prompt
+from prompt_toolkit.patch_stdout import patch_stdout
+from io import StringIO
+from prompt_toolkit.application import Application
+from prompt_toolkit.layout import Layout, HSplit
+from prompt_toolkit.widgets import TextArea
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.buffer import Buffer
+from prompt_toolkit.layout import VSplit, HSplit
+
+
+
 
 
 
@@ -31,6 +43,8 @@ class Client:
 
         self.needs_update = False
         self.console = Console()
+
+        
 
 
         self.player1_grid = []
@@ -111,7 +125,7 @@ class Client:
         self.chat_messages.extend(new_messages)
 
 
-    def render_board(self):
+    def render_board_player1(self):
         def grid_to_str(grid):
             size = len(grid)
             rows = []
@@ -125,10 +139,26 @@ class Client:
         board_text = ""
         if self.player1_grid:
             board_text += "Player 1:\n" + grid_to_str(self.player1_grid) + "\n\n"
+
+        return board_text or "Waiting for board data..."
+
+    def render_board_player2(self):
+        def grid_to_str(grid):
+            size = len(grid)
+            rows = []
+            rows.append("  " + "".join(str(i + 1).rjust(2) for i in range(size)))
+            for r in range(size):
+                row_label = chr(ord('A') + r)
+                row_str = " ".join(grid[r][c] for c in range(size))
+                rows.append(f"{row_label:2} {row_str}")
+            return "\n".join(rows)
+
+        board_text = ""
         if self.player2_grid:
             board_text += "Player 2:\n" + grid_to_str(self.player2_grid)
 
-        return Panel(board_text or "Waiting for board data...", title="Game Board", border_style="green")
+        return board_text or "Waiting for board data..."
+
 
     def render_chat(self):
         chat_text = "\n".join(self.chat_messages) or "No messages yet."
@@ -142,6 +172,15 @@ class Client:
         )
         return layout
 
+    def render_rich_to_text(self, renderable):
+        buffer = StringIO()
+        temp_console = Console(file=buffer, width=100)
+        temp_console.print(renderable)
+        return buffer.getvalue()
+
+
+    """
+
     def live_ui_loop(self):
         with Live(self.render_layout(), refresh_per_second=4, console=self.console, screen=True) as live:
             self.live = live
@@ -150,6 +189,101 @@ class Client:
                     live.update(self.render_layout())
                     self.needs_update = False
                 time.sleep(0.25)
+
+    """
+
+    def grid_to_str(grid):
+        size = len(grid)
+        rows = []
+        rows.append("  " + "".join(str(i + 1).rjust(2) for i in range(size)))
+        for r in range(size):
+            row_label = chr(ord('A') + r)
+            row_str = " ".join(grid[r][c] for c in range(size))
+            rows.append(f"{row_label:2} {row_str}")
+        return "\n".join(rows)
+
+
+    def run_prompt_toolkit_ui(self):
+        self.chat_box = TextArea(text="", height=12, style="class:chat", read_only=True)
+        #self.board_box = TextArea(text="", height=24, style="class:board", read_only=True)
+
+        self.player1_board_box = TextArea(text="", height=20, style="class:board", read_only=True)
+        self.player2_board_box = TextArea(text="", height=20, style="class:board", read_only=True)
+
+
+        def update_ui():
+            #self.board_box.text = self.render_rich_to_text(self.render_board())
+            self.chat_box.text = self.render_rich_to_text(self.render_chat())
+            self.player1_board_box.text = self.render_rich_to_text(self.render_board_player1())
+            self.player2_board_box.text = self.render_rich_to_text(self.render_board_player2())
+            """
+            if self.player1_grid:
+                self.player1_board_box.text = grid_to_str(self.player1_grid)
+            else:
+                self.player1_board_box.text = "Waiting for Player 1 board data..."
+
+            if self.player2_grid:
+                self.player2_board_box.text = grid_to_str(self.player2_grid)
+            else:
+                self.player2_board_box.text = "Waiting for Player 2 board data..."
+
+            self.chat_box.text = self.render_rich_to_text(self.render_chat())
+            """
+
+
+        def accept(buff):
+            msg = buff.text
+            if msg.strip():
+                packet = str(self.message_util.get_chat_messages(msg, self.client))
+                self.socket.sendall(packet.encode())
+            buff.text = ""  # Clear input after sending
+            update_ui()
+
+        input_field = TextArea(
+            height=1,
+            prompt="> [CHAT] ",
+            multiline=False,
+            wrap_lines=True,
+            accept_handler=accept
+        )
+        """
+        layout = Layout(HSplit([
+            self.board_box,
+            self.chat_box,
+            input_field
+        ]),focused_element=input_field) 
+        """
+
+        layout = Layout(
+            HSplit([
+                VSplit([
+                    self.player1_board_box,
+                    self.player2_board_box
+                ]),
+                self.chat_box,
+                input_field
+            ]),focused_element=input_field)
+
+
+        kb = KeyBindings()
+
+        @kb.add("c-c")
+        def _(event):
+            event.app.exit()
+
+        self.ui_app = Application(layout=layout, key_bindings=kb, full_screen=True)
+
+        def ui_updater():
+            while True:
+                time.sleep(0.5)
+                update_ui()
+
+        threading.Thread(target=ui_updater, daemon=True).start()
+
+        with patch_stdout():
+            self.ui_app.run()
+
+
 
 
 
@@ -164,14 +298,15 @@ class Client:
         message = self.message_util.get_spectator_registration_message(self.client)
         self.socket.sendall(str(message).encode())
         threading.Thread(target=self.receive_and_interact_with_server_spectator).start()
-        self.start_chat_loop()
+        #self.start_chat_loop()
 
         # Start live UI update loop
-        threading.Thread(target=self.live_ui_loop, daemon=True).start()
+        #threading.Thread(target=self.live_ui_loop, daemon=True).start()
+        self.run_prompt_toolkit_ui()
 
         # Keep the main thread alive
-        while True:
-            time.sleep(0.5)
+        #while True:
+            #time.sleep(0.5)
 
 
 
@@ -222,19 +357,22 @@ class Client:
             except Exception as e:
                     print(f"[CHAT ERROR] {e}")
                     break
-
+    """
     def start_chat_loop(self):
         def chat_loop():
             while True:
                 try:
-                    prompt_message = Util.get_prompt_message("Enter CHAT message: ")
-                    msg = input()  # Accept chat message
-                    if msg.strip():
-                        self.socket.sendall(str(self.message_util.get_chat_messages(msg,self.client)).encode())
+                    with patch_stdout():
+                        msg = prompt("> [CHAT] Type your message: ")
+                        #prompt_message = Util.get_prompt_message("Enter CHAT message: ")
+                        #msg = input()  # Accept chat message
+                        if msg.strip():
+                            self.socket.sendall(str(self.message_util.get_chat_messages(msg,self.client)).encode())
                 except:
                     break
         threading.Thread(target=chat_loop).start()
 
+        """
 
 
     def player_registration(self, response_message = None):
