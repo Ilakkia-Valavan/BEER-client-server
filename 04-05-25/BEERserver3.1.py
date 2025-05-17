@@ -192,18 +192,18 @@ class Server:
                     
                     #client_message = ast.literal_eval(raw)
 
-                    print("client message chat ",client_message)
+                    #print("client message chat ",client_message)
 
                     if client_message["message_type"] == "CHAT":
                         chat_message = client_message["data"]["message"]
                         sender_name = client_message["data"]["name"]
 
                         #print(f"[CHAT] {sender_name}: {chat_message}")
-                        print("send_chat_message format: ",self.message_util.send_chat_message(chat_message, sender_name))
+                        #print("send_chat_message format: ",self.message_util.send_chat_message(chat_message, sender_name))
 
                         self.message_queue.append(str(self.message_util.send_chat_message(chat_message, sender_name)))
 
-                        print("message_queue ",self.message_queue)
+                        #print("message_queue ",self.message_queue)
 
                         # Broadcast to all spectators
                         """
@@ -261,8 +261,8 @@ class Server:
                     current_player["client_socket"].settimeout(32)
                     client_message = self.packet_util.receive_message(current_player["client_socket"])
                     #client_message = ast.literal_eval(current_player["client_socket"].recv(1024).decode())
-                    print("game handller() client msg: ", client_message)
-                    print("game handller() current client : ", current_player)
+                    #print("game handller() client msg: ", client_message)
+                    #print("game handller() current client : ", current_player)
 
                 except socket.timeout as te:
                     print("in socket timeout exception")
