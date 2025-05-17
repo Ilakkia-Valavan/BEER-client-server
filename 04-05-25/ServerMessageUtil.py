@@ -1,9 +1,6 @@
 
 
 class ServerMessageUtil:
-
-    def __init__(self):
-        print(1)
     
     def get_registration_response(self, client_detail,status,error_code = "",error_message = ""):
 

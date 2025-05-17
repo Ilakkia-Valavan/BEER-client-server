@@ -16,6 +16,15 @@ from rich.console import Console
 import os
 from PacketUtil import PacketUtil
 from PacketUtil import INFO_MESSAGE, ACTION_MESSAGE, CHAT_MESSAGE, GAME_LOG_MESSAGE, RESPONSE_MESSAGE 
+from prompt_toolkit import prompt
+from prompt_toolkit.patch_stdout import patch_stdout
+from io import StringIO
+from prompt_toolkit.application import Application
+from prompt_toolkit.layout import Layout, HSplit
+from prompt_toolkit.widgets import TextArea
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.buffer import Buffer
+from prompt_toolkit.layout import VSplit, HSplit
 
 
 
@@ -40,21 +49,6 @@ class Client:
         self.player1_grid = []
         self.player2_grid =[]
         self.chat_messages = []
-
-        """
-        self.name = input("Enter your name: ")
-        self.ID = input("Enter your ID: ")
-        self.session_id = input("Enter session ID if rejoining (or leave blank): ").strip()
-        self.role = input("Enter your role (p = Player, s = Spectator): ").lower().strip()
-        self.message_util = ClientMessageUtil()
-
-        self.client = {
-            'client_name': self.name,
-            'client_ID': self.ID,
-            'client_role': self.role,
-            'session_id': self.session_id
-        }
-        """
 
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect((HOST, PORT))
@@ -114,8 +108,7 @@ class Client:
             self.needs_update = True
         self.chat_messages.extend(new_messages)
 
-
-    def render_board(self):
+    def render_board_player1(self):
         def grid_to_str(grid):
             size = len(grid)
             rows = []
@@ -129,10 +122,25 @@ class Client:
         board_text = ""
         if self.player1_grid:
             board_text += "Player 1:\n" + grid_to_str(self.player1_grid) + "\n\n"
+
+        return board_text or "Waiting for board data..."
+
+    def render_board_player2(self):
+        def grid_to_str(grid):
+            size = len(grid)
+            rows = []
+            rows.append("  " + "".join(str(i + 1).rjust(2) for i in range(size)))
+            for r in range(size):
+                row_label = chr(ord('A') + r)
+                row_str = " ".join(grid[r][c] for c in range(size))
+                rows.append(f"{row_label:2} {row_str}")
+            return "\n".join(rows)
+
+        board_text = ""
         if self.player2_grid:
             board_text += "Player 2:\n" + grid_to_str(self.player2_grid)
 
-        return Panel(board_text or "Waiting for board data...", title="Game Board", border_style="green")
+        return board_text or "Waiting for board data..."
 
     def render_chat(self):
         chat_text = "\n".join(self.chat_messages) or "No messages yet."
@@ -146,16 +154,71 @@ class Client:
         )
         return layout
 
-    def live_ui_loop(self):
-        with Live(self.render_layout(), refresh_per_second=4, console=self.console, screen=True) as live:
-            self.live = live
+    def render_rich_to_text(self, renderable):
+            buffer = StringIO()
+            temp_console = Console(file=buffer, width=100)
+            temp_console.print(renderable)
+            return buffer.getvalue()
+
+    def run_prompt_toolkit_ui(self):
+        self.chat_box = TextArea(text="", height=12, style="class:chat", read_only=True)
+        #self.board_box = TextArea(text="", height=24, style="class:board", read_only=True)
+
+        self.player1_board_box = TextArea(text="", height=20, style="class:board", read_only=True)
+        self.player2_board_box = TextArea(text="", height=20, style="class:board", read_only=True)
+
+
+        def update_ui():
+            #self.board_box.text = self.render_rich_to_text(self.render_board())
+            self.chat_box.text = self.render_rich_to_text(self.render_chat())
+            self.player1_board_box.text = self.render_rich_to_text(self.render_board_player1())
+            self.player2_board_box.text = self.render_rich_to_text(self.render_board_player2())
+
+
+        def accept(buff):
+            msg = buff.text
+            if msg.strip():
+                packet = str(self.message_util.get_chat_messages(msg, self.client))
+                self.socket.sendall(self.packet_util.create_packet(CHAT_MESSAGE,packet))
+            buff.text = ""  # Clear input after sending
+            update_ui()
+
+        input_field = TextArea(
+            height=1,
+            prompt="> [CHAT] ",
+            multiline=False,
+            wrap_lines=True,
+            accept_handler=accept
+        )
+
+        layout = Layout(
+            HSplit([
+                VSplit([
+                    self.player1_board_box,
+                    self.player2_board_box
+                ]),
+                self.chat_box,
+                input_field
+            ]),focused_element=input_field)
+
+
+        kb = KeyBindings()
+
+        @kb.add("c-c")
+        def _(event):
+            event.app.exit()
+
+        self.ui_app = Application(layout=layout, key_bindings=kb, full_screen=True)
+
+        def ui_updater():
             while True:
-                if self.needs_update:
-                    live.update(self.render_layout())
-                    self.needs_update = False
-                time.sleep(0.25)
+                time.sleep(0.5)
+                update_ui()
 
+        threading.Thread(target=ui_updater, daemon=True).start()
 
+        with patch_stdout():
+            self.ui_app.run()
 
 
     def spectator_register(self, response_message = None):
@@ -169,16 +232,7 @@ class Client:
         #self.socket.sendall(str(message).encode())
         self.socket.sendall(self.packet_util.create_packet(ACTION_MESSAGE,str(message)))
         threading.Thread(target=self.receive_and_interact_with_server_spectator).start()
-        self.start_chat_loop()
-
-        # Start live UI update loop
-        threading.Thread(target=self.live_ui_loop, daemon=True).start()
-
-        # Keep the main thread alive
-        while True:
-            time.sleep(0.5)
-
-
+        self.run_prompt_toolkit_ui()
 
 
     def receive_and_interact_with_server_spectator(self):
@@ -230,24 +284,9 @@ class Client:
                     print(f"[CHAT ERROR] {e}")
                     break
 
-    def start_chat_loop(self):
-        def chat_loop():
-            while True:
-                try:
-                    prompt_message = Util.get_prompt_message("Enter CHAT message: ")
-                    msg = input("Enter CHAT message: ")  # need to make cursor visible
-                    if msg.strip():
-                        #self.socket.sendall(str(self.message_util.get_chat_messages(msg,self.client)).encode())
-                        self.socket.sendall(self.packet_util.create_packet(CHAT_MESSAGE,str(self.message_util.get_chat_messages(msg,self.client))))
-
-                except:
-                    break
-        threading.Thread(target=chat_loop).start()
-
-
 
     def player_registration(self, response_message = None):
-        print("in player_registration 1")
+        #print("in player_registration 1")
         if response_message == None : 
                
             if self.role.lower() == "p":
@@ -275,8 +314,8 @@ class Client:
                 self.ID = input(f"Enter a different ID(Not same as {self.client["client_ID"]}): ")
                 self.client["client_ID"] = self.ID
                 message = self.message_util.get_registration_message(self.client)
-                print("in player_registration 2")
-                print(message)
+                #print("in player_registration 2")
+                #print(message)
                 self.socket.sendall(self.packet_util.create_packet(ACTION_MESSAGE,str(message))) 
 
                 #self.socket.sendall(str(message).encode()) 
@@ -286,8 +325,8 @@ class Client:
                 self.session_id = input(f"Enter correct session ID (or leave blank to register anew): ")
                 self.client["session_id"] = self.session_id
                 message = self.message_util.get_registration_message(self.client)
-                print("in player_registration 2")
-                print(message)
+                #print("in player_registration 2")
+                #print(message)
                 self.socket.sendall(self.packet_util.create_packet(ACTION_MESSAGE,str(message))) 
 
                 #self.socket.sendall(str(message).encode()) 
@@ -310,7 +349,7 @@ class Client:
 
             message = self.message_util.get_ship_placement_message(ship_detail, position, direction.upper(), self.client)
 
-            print("place ship: ", message)
+            #print("place ship: ", message)
             self.socket.sendall(self.packet_util.create_packet(ACTION_MESSAGE,str(message))) 
 
             #self.socket.sendall(str(message).encode())
@@ -361,13 +400,13 @@ class Client:
             print(f"{row_label:2} {row_str}")
 
     def receive_and_interact_with_server(self):
-        print("in thread func")
+        #print("in thread func")
         while True:
-            print("in while loop")
+            #print("in while loop")
             try:           
                 #message = self.socket.recv(4096).decode()
                 server_message = self.packet_util.receive_message(self.socket)
-                print("receive_and_interact_with_server-> " ,server_message)
+                #print("receive_and_interact_with_server-> " ,server_message)
 
                 # Try to parse as dict (structured message)
                 try:
@@ -394,7 +433,7 @@ class Client:
                     elif server_message["message_type"] == "ACTION":
                         self.action_handler(server_message)
 
-                    print("in thread func 2")
+                    #print("in thread func 2")
 
                 except Exception as e:
                     print(f"[ERROR receive_and_interact_with_server] {e}")
@@ -407,7 +446,7 @@ class Client:
             except Exception as e:
                 print(f"[ERROR] {e}")
                 break
-        print("out while loop")
+        #print("out while loop")
 
         self.socket.close()
         print("[CLOSED] Connection closed.")

@@ -38,8 +38,8 @@ class PlayerServerHandler:
     def get_client_detail(self):
         return self.client_detail
 
-    def handle(self, message):
-        print("player server handler.handle message : ", message)
+    #def handle(self, message):
+        #print("player server handler.handle message : ", message)
 
     def place_ship(self):
         while True:
@@ -72,7 +72,7 @@ class PlayerServerHandler:
 
                 #client_message = ast.literal_eval(self.client_detail["client_socket"].recv(1024).decode())
                 client_message = self.packet_util.receive_message(self.client_detail["client_socket"])
-                print(client_message)
+                #print(client_message)
 
                 try:
                     row, col = parse_coordinate(client_message["data"]["position"])
@@ -83,7 +83,7 @@ class PlayerServerHandler:
                     elif client_message["data"]["direction"] == 'V':
                         orientation = 1
 
-                    print("orientation = ", orientation)
+                    #print("orientation = ", orientation)
 
                     if self.board.can_place_ship(row, col, current_ship["ship_size"], orientation):
                         occupied_positions = self.board.do_place_ship(row, col, current_ship["ship_size"], orientation)
@@ -117,7 +117,7 @@ class PlayerServerHandler:
             return None, None , self.board.get_display_grid() , "Timed out or Input not received."
         
         name = self.board.get_player_name()
-        print("executing fire command for: ", name)
+        #print("executing fire command for: ", name)
         sunk_name = None
         try:
             row, col = parse_coordinate(position)

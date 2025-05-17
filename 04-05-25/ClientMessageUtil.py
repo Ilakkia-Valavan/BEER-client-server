@@ -1,7 +1,5 @@
 class ClientMessageUtil:
 
-    def __init__(self):
-        print(1)
     
     def get_registration_message(self, client_detail):
 

@@ -68,7 +68,7 @@ class Server:
 
             try:
                 client_message = self.packet_util.receive_message(client_socket)
-                print("client handler client message ",client_message)
+                #print("client handler client message ",client_message)
                 #client_message = ast.literal_eval(client_socket.recv(1024).decode())
 
                 if client_message["command"] == "REGISTER" : 
@@ -130,16 +130,16 @@ class Server:
                             break
 
                 i = 0
-                print("manage spectator self message queue:", self.message_queue)
+                #print("manage spectator self message queue:", self.message_queue)
 
                 while len(self.message_queue) > 0:
                     i+=1
-                    print("in local message queue")
+                    #print("in local message queue")
                     local_message_queue.append(self.message_queue.pop())
                     if i == 5:
                         break
 
-                print("local message queue: ",local_message_queue)
+                #print("local message queue: ",local_message_queue)
                 if len(local_message_queue) > 0:
                     
                     i = 0
@@ -269,8 +269,8 @@ class Server:
                     client_message = self.message_util.get_fire_command_for_server_timeout(current_player, None)
                     current_player["timeout_count"] += 1
 
-                    print("TIME OUT COUNT :" , current_player["timeout_count"])
-                    print("time out error in game_handler(): ",te)                    
+                    #print("TIME OUT COUNT :" , current_player["timeout_count"])
+                    #print("time out error in game_handler(): ",te)                    
                     
                 except Exception as e:
                     print("game handler timeout exception : ",e)
@@ -352,9 +352,9 @@ class Server:
 
     def player_rejoin(self, client_detail):
         rejoined = False
-        print("rejoin client detail: ", client_detail)
-        print("Rejoin player1: ", self.player1)
-        print("Rejoin player2: ", self.player2)
+        #print("rejoin client detail: ", client_detail)
+        #print("Rejoin player1: ", self.player1)
+        #print("Rejoin player2: ", self.player2)
 
         if self.player1 != None and self.player1["client_ID"] == client_detail["client_ID"] and self.player1["session_id"] == client_detail["session_id"]:
             self.player1["client_socket"] = client_detail["client_socket"] 
@@ -371,7 +371,7 @@ class Server:
             for player in self.lobby:
                 #to-do: check if earlier socket is active for secuirty
                 #to-do: rejoin implementation
-                print("rejoin player: ",player)
+                #print("rejoin player: ",player)
                 if player["client_ID"] == client_detail["client_ID"] and player["session_id"] == client_detail["session_id"]:
                     print("rejoin ; in if ")
                     player["client_socket"] = client_detail["client_socket"] 
@@ -393,7 +393,7 @@ class Server:
             rejoin_response = self.message_util.get_rejoin_response(client_detail,"SUCCESS")
             #client_detail["client_socket"].sendall(str(rejoin_response).encode())
             client_detail['client_socket'].sendall(self.packet_util.create_packet(RESPONSE_MESSAGE,str(rejoin_response)))
-        print("rejoin : 1 : " , rejoined)
+        #print("rejoin : 1 : " , rejoined)
 
         return rejoined 
 
